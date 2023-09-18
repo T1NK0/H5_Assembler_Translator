@@ -1,3 +1,6 @@
+use std::fs::File;
+use std::io::{self, BufRead};
+use std::path::Path;
 use std::collections::HashMap;
 
 // Definere datastrukturerne
@@ -14,8 +17,7 @@ struct Command {
     symbol: Option<String>,
     dest: Option<String>,
     comp: Option<String>,
-    jump: Option<String>,
-    translated_line: Option<String>
+    jump: Option<String>
 }
 
 // Define struct for the comp table
@@ -74,7 +76,6 @@ struct DestTable {
 impl DestTable {
     fn new() -> Self {
         let map: HashMap<&str, &str> = [
-            (null_dest, "000"),
             ("M", "001"),
             ("D", "010"),
             ("MD", "011"),
@@ -102,7 +103,6 @@ struct JumpTable {
 impl JumpTable {
     fn new() -> Self {
         let map: HashMap<&str, &str> = [
-            (null_jump, "000"),
             ("JGT", "001"),
             ("JEQ", "010"),
             ("JGE", "011"),
@@ -125,7 +125,6 @@ impl JumpTable {
 // Parserfunktion for A-kommandoer
 fn parse_a_command(line: &str, current_variable: &mut i32) -> Command {
     let symbol = line[1..].to_string();
-    let translated_line = format!("@{}", current_variable);
     *current_variable += 1;
     Command {
         ctype: CommandType::ACommand,
@@ -133,11 +132,9 @@ fn parse_a_command(line: &str, current_variable: &mut i32) -> Command {
         dest: None,
         comp: None,
         jump: None,
-        translated_line: Some(translated_line),
     }
 }
 
-// Parserfunktion for C-kommandoer
 // Parser function for C-commands
 fn parse_c_command(line: &str, dest_table: &DestTable, comp_table: &CompTable, jump_table: &JumpTable) -> Command {
     let mut command = Command {
@@ -146,30 +143,38 @@ fn parse_c_command(line: &str, dest_table: &DestTable, comp_table: &CompTable, j
         dest: None,
         comp: None,
         jump: None,
-        translated_line: None,
     };
 
+
+    // If the line contains a '=' execute following code
     if let Some(equals_index) = line.find('=') {
-        // Split by '=' to extract destination and computation
+        // Set the dest_str and the rest variables thats mutable, since it's &str, if split the values from both sides of the equal to the respected variables.
         let (dest_str, rest) = line.split_at(equals_index);
+        // Sets the command variable dest. to the value from our destination table, that matches the key, from our line.
         command.dest = dest_table.get(dest_str.trim()).map(|s| s.to_string());
 
-        // Remove the '=' character and continue processing
+        // Remove the first char which now is the '=', and then leave the rest of the get stored in the rest variable.
         let rest = &rest[1..];
 
-        // Extract the computation and jump
+        // Check if there is a jump value in the query, by searching for semicolon in the rest variable. 
         if let Some(semicolon_index) = rest.find(';') {
+            // Set the comp and jump variables to the split values at the semicolon index.
             let (comp_str, jump_str) = rest.split_at(semicolon_index);
+            // Set the commands comp value by looking for the key in the comp table and set the value of the key.
             command.comp = comp_table.get(comp_str.trim()).map(|s| s.to_string());
+            // Set the jump value by looking for the key in the jump table, and removing the semicolon from the string we search with by indexing after 1.
             command.jump = jump_table.get(jump_str[1..].trim()).map(|s| s.to_string());
         } else {
             // No jump specified, process the remaining as computation
             command.comp = comp_table.get(rest.trim()).map(|s| s.to_string());
         }
+        // Else if it just contains a semicolon and no destination
     } else if let Some(semicolon_index) = line.find(';') {
-        // No destination, split by ';' to extract computation and jump
+        // Set the computation and jump strings to the values on each side of the split.
         let (comp_str, jump_str) = line.split_at(semicolon_index);
+        // Set the computation of command to the value from the key.
         command.comp = comp_table.get(comp_str.trim()).map(|s| s.to_string());
+        // Set the jump value of the command, to the key after trimming off the middle char, to the value.
         command.jump = jump_table.get(jump_str[1..].trim()).map(|s| s.to_string());
     } else {
         // No destination or jump specified, process the entire line as computation
@@ -179,15 +184,13 @@ fn parse_c_command(line: &str, dest_table: &DestTable, comp_table: &CompTable, j
     command
 }
 
-
 // Main loop for at læse filen og parse kommandoerne
-use std::fs::File;
-use std::io::{self, BufRead};
-use std::path::Path;
-
 fn main() -> io::Result<()> {
+    // The path of the file we're translating.
     let path = Path::new("C:/Users/mat/Documents/School/h5/nand2tetris/projects/06/add/Add.asm");
+    // Open the file, in the path variable.
     let file = File::open(&path)?;
+    // Read the file, using the "BufReader"
     let reader = io::BufReader::new(file);
     // Our starting variable since  0-15 is r0, r1 etc. updated for each iteration.
     let mut current_variable = 16;
@@ -201,28 +204,59 @@ fn main() -> io::Result<()> {
     let mut command: Command;
     for line in reader.lines() {
         let line = line?;
+        // Removes the whitespace from the lines, and save the trimmed line to the new variable "trimmed_line"
         let trimmed_line = line.trim();
-    
+        // If the trimmed line is empty, or is a commented line, skip the line.
         if trimmed_line.is_empty() || trimmed_line.starts_with("//") {
             continue;
         }
-    
+        
+        // Creates a new Command line for each iteration.
         let mut command: Command;
-        let translated_line = format!("@{}", current_variable);
     
+        // IF the line starts with a '@' to indicate an "ACommand"
         if line.starts_with('@') {
+            // pass along the line we are on, and the start value for the variables (16, since 0 - 15 is R0, R1. etc.)
             command = parse_a_command(&line, &mut current_variable);
+            // set the result to the command values.
+            let result: Option<i16> = command
+                    .symbol
+                    .as_ref()
+                    .map(|s| s.parse::<i16>().ok())
+                    .flatten();
+
+            match result {
+                // Adds the extra 0's needed if need be and print the binary code.
+                Some(value) => {
+                    let binary_str = format!("{:016b}", value);
+                    println!("{}", binary_str);
+                }
+                None => {
+                    println!("Failed to parse integer.");
+                }
+            }
+            // Checks for labels.
+        } else if line.starts_with("(") {
+            
+        
         } else {
+            // Else it's a CCommand
+
+            // Set command, equal to the variables we assign values to in the parse_c_command function
             command = parse_c_command(&line, &dest_table, &comp_table, &jump_table);
-        }
-    
-        println!("{:?}", command);
-    }
-    
+            // Set the result with the formatted string using the macro "format".
+            let result = format!(
+                //This will add 3 1's to the front of the string, and the brackets will be the next 3 variables (Comp, dest, and jump.)
+                "111{}{}{}",
+                command.comp.unwrap_or_default(),
+                command.dest.unwrap_or_default(),
+                // Set the variable, or if null, add 000.
+                command.jump.unwrap_or_else(|| "000".to_string())
+            );
+            // Writes the result to the console.
+            println!("{}", result);
+        }    
+    }   
     
     Ok(())
 }
-
-// Define null values
-const null_dest: &str = "";
-const null_jump: &str = "";
