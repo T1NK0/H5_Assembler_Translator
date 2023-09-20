@@ -1,23 +1,6 @@
 use std::collections::HashMap;
 
-// Definere datastrukturerne
-enum CommandType {
-    ACommand, // @value
-    CCommand, // dest=comp;jump
-    LCommand, // (LABEL)
-}
-// Definere commands
-struct Command {
-    ctype: CommandType,
-    symbol: Option<String>,
-    dest: Option<String>,
-    comp: Option<String>,
-    jump: Option<String>
-}
-
 pub struct ParseHandler {
-    // TODO: Add later
-    command_type: CommandType,
     variable_counter: u16,
     label_lineshift: usize,
     symbol_map: HashMap<String, u16>,
@@ -52,7 +35,6 @@ impl ParseHandler {
         ].into();
 
         ParseHandler{
-            command_type: CommandType::ACommand,
             variable_counter: 16,
             label_lineshift: 0,
             symbol_map: map
@@ -112,7 +94,7 @@ impl ParseHandler {
 
     fn translate_a_command(&mut self, file_line:&str) -> u16 {
         let a_command = &file_line[1..];
-        dbg!(&a_command);
+        // dbg!(&a_command);
 
         if let Ok(value) = a_command.parse::<u16>() {
             return value;
@@ -132,7 +114,7 @@ impl ParseHandler {
     }
 
     fn translate_c_command(&self, file_line:&str) -> u16 {
-        dbg!(&file_line);
+        // dbg!(&file_line);
         let prepped_line = match file_line.contains('=') {
             true => file_line.into(),
             false => {format!("null={}", file_line)}
